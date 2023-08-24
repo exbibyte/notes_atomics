@@ -294,7 +294,7 @@ if let ... = ... {
 
   \subsection{Lazy Initialization}
   execute once by 1 thread, sharable afterwards\\
-  race possible from threads, but this is different from data race which causes undefined behaviour\\
+  race possible from threads, but this is different from data race which causes undefined behaviour (UB)\\
   can use \verb%CondVar% / thread parking / \verb%std::sync::Once% / \verb%std::sync::OnceLock% to avoid wasted compute from multiple threads
 
   \subsection{Move Closure}
@@ -330,7 +330,7 @@ if let ... = ... {
       \item there is at maximum 1 mutable reference to an object at anytime
     \end{itemize}
       
-    if such assumptions are broken, then undefined behaviour exists: more wrong conclusions may be propagated through optimizations
+    if such assumptions are broken, then UB exists: more wrong conclusions may be propagated through optimizations
 
     \verb%unsafe% blocks are also assumed to be sound by the compiler which means compiler may apply optimizations and elide code when feasible
 
@@ -343,6 +343,107 @@ if let ... = ... {
 
     \verb%Cell / Atomic%: replace value, no borrow\\
     \verb%RefCell / Mutex%: runtime borrowing; book-keeping cost for existing borrows; failable at runtime
+
+    \vfill\null
+    \columnbreak
+    
+    \section{Memory Ordering}
+    defining happens-before relations across threads
+
+    concurrent non-atomic stores to same variable causes data race $\implies$ UB
+
+    lack of globally consistent order
+
+    thread spawn/join: automatically enforces happens-before relation
+
+    \subsubsection{Relaxed Ordering}
+
+    \begin{itemize}
+    \item per atomic variable: a total modification order in every run of the program $\implies$ all modifications of the said atomic variable happen in 1 order that is consistent/same from views of every thread
+    \item multiple possible orderings may exist when the program is run multiple times, but each run satisfies a total modification order
+    \item no happens-before relation
+    \end{itemize}
+
+    \subsubsection{Release-Acquire Ordering Pair}
+    pairing:\\
+    store operation specified with release semantics\\
+    load operation specified with acquire semantics
+
+    happens-before relation formed at runtime when load succeeds: all memory operations before release store is observable by and after acquire load
+
+    release store of an atomic variable may be modified by any number of fetch-modify / compare-exchange operations and still have a happens-before relation with an acquire load afterwards on the said atomic variable
+
+    any store of the associated atomic variable breaks the chain of a release-acquire pair (that previously starts with a release store and possibly followed with fetch-modifies/compare-exchanges)
+
+    use of non-atomic variable in different threads and borrow checker $\implies$ may need unsafe blocks
+    
+    \subsubsection{Release-Consume Ordering Pair}
+
+    pairing:\\
+    store operation specified with release semantics\\
+    load operation specified with consume semantics
+
+    happens-before relation for associated atomic variable in the release store and the dependent expressions in the consumer thread
+
+    practically, hard to define dependent evaluation and implementation tends to fallback to acquire semantics instead
+    
+    \subsubsection{Sequentially Consistent Ordering}
+
+    pairing:\\
+    store operation specified with SeqCst semantics\\
+    load operation specified with SeqCst semantics
+
+    guarantees of:
+    \begin{itemize}
+    \item acquire ordering
+    \item release ordering
+    \item globally consistent ordering of all SeqCst operations (every SeqCst operation in a program is a part of a single total order that all threads agree on)
+    \end{itemize}
+
+    can replace acquire and release ordering and maintain happens-before relation
+    
+    \subsection{Memory Fence}
+
+    separate memory ordering semantics from atomic operations
+
+    it can take place of acquire / release / other memory order operations
+
+    types of fences:
+    \begin{itemize}
+    \item release fence
+    \item acquire fence
+    \item acquire-release fence
+    \item sequentially consistent fence
+    \end{itemize}
+      
+    \subsubsection{Practical Replacement}
+    
+    \begin{tabular}{| c | p{50mm} |}
+    \hline
+    \textbf{without fences} & \textbf{with fences} \\
+    \hline
+    release store & fence with release ordering \newline ... \newline atomic store (any memory ordering) &
+    \hline
+    acquire lead & atomic load (any memory ordering) \newline ... \newline fence with acquire ordering &
+    \hline
+    \end{tabular}
+
+    any atomic store following release fence is observable by any atomic load before acquire fence $\implies$ happens-before relation is established between the release-acquire fences pairing
+
+    practical usages:
+    \begin{itemize}
+    \item can be used for multiple variables at once
+    \item conditional fence (apply happens-before relation only after certain condition is met)\\
+      eg: place acquire fence in conditional branch that succeeds that is relevant to the atomic variable
+    \item may be more efficient if atomic variable is expected to fail in comparison often (let atomic variable be loaded with relaxed memory ordering)
+    \end{itemize}
+  
+    \subsection{Compiler Fence}
+
+    \subsection{FAQs}
+
+    \subsection{Summary}
+    
     
 \end{multicols*}
 

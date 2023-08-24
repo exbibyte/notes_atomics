@@ -356,6 +356,8 @@ if let ... = ... {
 
     thread spawn/join: automatically enforces happens-before relation
 
+    note: current theoretical model for formalizing memory ordering bug: cyclic reasoning / value out of thin air
+
     \subsubsection{Relaxed Ordering}
 
     \begin{itemize}
@@ -422,28 +424,78 @@ if let ... = ... {
     \hline
     \textbf{without fences} & \textbf{with fences} \\
     \hline
-    release store & fence with release ordering \newline ... \newline atomic store (any memory ordering) &
+    release store & fence with release ordering \newline ... \newline atomic store (any memory ordering) \\
     \hline
-    acquire lead & atomic load (any memory ordering) \newline ... \newline fence with acquire ordering &
+    acquire lead & atomic load (any memory ordering) \newline ... \newline fence with acquire ordering \\
     \hline
     \end{tabular}
 
     any atomic store following release fence is observable by any atomic load before acquire fence $\implies$ happens-before relation is established between the release-acquire fences pairing
 
-    practical usages:
+    \subsubsection{Practical Usages}
     \begin{itemize}
     \item can be used for multiple variables at once
     \item conditional fence (apply happens-before relation only after certain condition is met)\\
       eg: place acquire fence in conditional branch that succeeds that is relevant to the atomic variable
+
+\begin{verbatim}
+let p = var.load(relaxed);
+if p == ... {
+  fence(acquire);
+  do_something(...);
+}
+\end{verbatim}
+
     \item may be more efficient if atomic variable is expected to fail in comparison often (let atomic variable be loaded with relaxed memory ordering)
     \end{itemize}
-  
-    \subsection{Compiler Fence}
 
+    \subsubsection{SeqCst Fence}
+    \begin{itemize}
+    \item is both a release fence and an acquire fence
+    \item is part of a single total order of sequentially consistent operations
+    \end{itemize}
+
+    \subsection{Compiler Fence}
+    does not prevent processor from reordering instructions
+    
+    Rust compiler fence: \verb%std::sync::atomic::compiler_fence%
+
+    uses:
+    \begin{itemize}
+    \item process-wide memory barriers
+    \item special cases of signal handler/interrupt
+    \end{itemize}
+    
     \subsection{FAQs}
 
+    memory model is not related to timing
+
+    memory model defines order of operations and affects instruction reordering
+
+    SeqCst implies the operation depends on the total order of every single SeqCst operation in the program\\
+    $\implies$ usually overly tall claim\\
+    $\implies$ more relaxed constraints may be easier to review (eg: release-acquire pairs)
+
+    release store not form happens-before relation with SeqCst store: for a part of a globally consistent order, both operations need to be SeqCst
+
     \subsection{Summary}
-    
+
+    each atomic variable has its own total modification order that all threads agree on
+
+    single thread: happens-before relations exist between every single operations
+
+    unlocking a mutex happens-before locking that mutex
+
+    SeqCst results in 1 globally consistent order of operations that participates in SeqCst, but it is usually overly constraining
+
+    fences allow combining memory ordering of multiple operations for efficiency or applying conditional memory ordering for efficiency
+
+    happens-before relation exist when:
+    \begin{itemize}
+    \item threads spawn / join
+    \item acquire load from a release store on an atomic variable
+    \item fetch-modifies / compare-exchanges in between a release-acquire pair on an atomic variable is still valid for that happens-before relation
+    \end{itemize}
     
 \end{multicols*}
 

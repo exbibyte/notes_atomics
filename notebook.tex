@@ -496,6 +496,80 @@ if p == ... {
     \item acquire load from a release store on an atomic variable
     \item fetch-modifies / compare-exchanges in between a release-acquire pair on an atomic variable is still valid for that happens-before relation
     \end{itemize}
+
+    \vfill\null
+    \columnbreak
+
+    \section{Processor}
+
+    \vfill\null
+    \columnbreak
+        
+    \section{OS Primitives}
+
+    \vfill\null
+    \columnbreak
+    
+    \section{Primitive Implementation Examples}
+
+    \subsection{Spin Lock}
+
+    release store (unlock) and acquire load (lock) pair for preventation of data race (UB)
+    
+    \verb%std::hint::spin_leep()%: possible optimization of processor
+
+    possible implementation:
+    \begin{itemize}
+    \item wraps actual data inside an \verb%UnsafeCell<T>% for interior mutability
+    \item requires \verb%T: Send%
+    \item locking provides exclusive access (and provides \verb%Sync% trait)
+    \item uses \verb%unsafe% blocks in function, user will not have to use \verb%unsafe%
+    \item use lock guard (representing safe access to locked data) pattern to managae lifetime of locked access to protected data:
+    \begin{itemize}
+      \item implement \verb%Deref%, \verb%DerefMut% to access data for user ergonomics (behave similar to reference)
+      \item implement \verb%Drop%: automatic release store (unlocking) when lifetime of the guard ends
+      \item manual drop also possible: this consumes and ends the valid lifetime of the guard and hence access to data at compile time $\implies$ any further reference and borrow to guard is invalid and will be flagged as error by the compiler
+      \end{itemize}  
+    \end{itemize}
+
+    \subsection{Channels}
+
+    \subsubsection{One Shot Channel}
+    \begin{itemize}
+      \item 1 message only from 1 thread to another thread
+      \item \verb%T: Send%
+      \item use of \verb%unsafe%:
+        \begin{itemize}
+        \item may be unitialized
+        \item non-copy data must not be duplicated
+        \item manual content drop may be necessary: leaking/forgetting is safe but sometimes undesirable
+        \item eg: \verb%std::mem::MaybeUninit<T>% (unsafe version of \verb%Option<T>%)
+        \end{itemize}
+      \item can use \verb%UsafeCell% for interior mutability when sharing across multiple threads
+      \item use type checking and static analysis to avoid errors: move/consume to avoid unwanted reuse of resources
+      \item use of \verb%Arc<T>% for sharing and resource dropping: \verb%RX% drop and \verb%TX% drop $\implies$ \verb%Arc<T>% drop $\implies$ \verb%T% drop
+      \item allocation optimization: user borrowed channel instead of creating an \verb%Arc% and managing it: use of lifetimes and mutable borrow for compile time checks
+      \item overwriting content for fresh initialization: after 1st borrow expires, subseqquent borrows are made on these newly created resources
+      \item \verb%TX, RX% take in additional lifetime parameter which is the same as the lifetime of the borrowed channel: when \verb%TX% or \verb%RX% is present, existing channel cannot be mutably borrowed again until \verb%TX% and \verb%RX% are both dropped
+      \item channel needs to outlive \verb%TX% and \verb%RX% for compiler check to pass
+      \item blocking interface:
+        \begin{itemize}
+        \item make \verb%RX% object not \verb%Send%, such as using a \verb%PhantomData<* const ()>% member field so that auto trait deduction for the wrapping struct is propagated to be \verb%!Send%:\\
+          \verb%* const () : !Send% $\implies$\\
+          \verb%PhantomData<* const ()> : !Send% $\implies$\\
+          wrapping struct is \verb%!Send%
+          \item use receiving thread's handle to invoke waking up a blocked thread (place this inside the sender struct)
+          \item call unpark on receiving thread's handle after release store optation is performed by the sender
+        \end{itemize}
+    \end{itemize}
+    \subsection{Arc}
+
+    \subsection{Locks}
+
+    \vfill\null
+    \columnbreak
+    
+    \section{Additional Ideas}
     
 \end{multicols*}
 

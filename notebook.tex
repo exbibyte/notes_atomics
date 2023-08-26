@@ -543,15 +543,30 @@ if p == ... {
         \item may be unitialized
         \item non-copy data must not be duplicated
         \item manual content drop may be necessary: leaking/forgetting is safe but sometimes undesirable
-        \item eg: \verb%std::mem::MaybeUninit<T>% (unsafe version of \verb%Option<T>%)
+        \item eg: \verb%std::mem::MaybeUninit<T>% (unsafe version of \verb%Option<T>%) for efficiency
+        \item use \verb%UnsafeCell%'s interior mutability for sharing across threads
         \end{itemize}
-      \item can use \verb%UsafeCell% for interior mutability when sharing across multiple threads
-      \item use type checking and static analysis to avoid errors: move/consume to avoid unwanted reuse of resources
-      \item use of \verb%Arc<T>% for sharing and resource dropping: \verb%RX% drop and \verb%TX% drop $\implies$ \verb%Arc<T>% drop $\implies$ \verb%T% drop
-      \item allocation optimization: user borrowed channel instead of creating an \verb%Arc% and managing it: use of lifetimes and mutable borrow for compile time checks
+      \item use of atomic swaps for setting one time flags
+      \item encoding of multiple states in one word and atomic compare-exchanges
+      \item possible use of runtime check/panic instead of letting UB happen
+      \item use type checking from compiler to avoid errors: move/consume to avoid unwanted reuse of resources:\\
+        
+        use of non-Copy type and pass by value / consume by called function $\implies$ prevent caller from using that object again at compile time (elides some runtime checks)
+        \begin{itemize}
+          \item \verb%TX-RX% pair for message passing, channel shared inside their private implmentations
+          \item use of \verb%Arc<T>% for sharing of allocation and resource dropping: \verb%RX% drop and \verb%TX% drop $\implies$ \verb%Arc<T>% drop $\implies$ \verb%T% drop
+          \item \verb%Arc<T>% incurs extra runtime overhead for allocation
+          \end{itemize}
+          
+        \item allocation optimization
+          \begin{itemize}
+          \item borrowing instead of memory allocation (\verb%Arc%)
+          \item use of lifetimes and mutable borrow for compile time checks
+          \item \verb%TX, RX% take in additional lifetime parameter which is the same as the lifetime of the borrowed channel: when \verb%TX% or \verb%RX% is present, existing channel cannot be mutably borrowed again until \verb%TX% and \verb%RX% are both dropped
+          \item channel needs to outlive \verb%TX% and \verb%RX% for compiler check to pass
+          \end{itemize}
+          
       \item overwriting content for fresh initialization: after 1st borrow expires, subseqquent borrows are made on these newly created resources
-      \item \verb%TX, RX% take in additional lifetime parameter which is the same as the lifetime of the borrowed channel: when \verb%TX% or \verb%RX% is present, existing channel cannot be mutably borrowed again until \verb%TX% and \verb%RX% are both dropped
-      \item channel needs to outlive \verb%TX% and \verb%RX% for compiler check to pass
       \item blocking interface:
         \begin{itemize}
         \item make \verb%RX% object not \verb%Send%, such as using a \verb%PhantomData<* const ()>% member field so that auto trait deduction for the wrapping struct is propagated to be \verb%!Send%:\\

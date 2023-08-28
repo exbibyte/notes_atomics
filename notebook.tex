@@ -502,6 +502,128 @@ if p == ... {
 
     \section{Processor}
 
+    atomic operation compiles to machine instructions
+
+    memory ordering at lowest level of individual instructions
+
+    tool for assembly code: \verb%cargo-show-asm%
+
+    instructions that cannot be represented by 1 processor instruction, use equivalent implementation with composite/multiple instructions (eg: cmpxchg and loop)
+
+    \subsection{x86-64}
+    compare-exchange and compare-exchange-weak have no difference: compile to lock cmpxchg instruction
+
+    x86 lock prefix as a modifier for instructions:\\
+    add, sub, and, not, or, xor, xchg(implicit), xadd, bts, btr, btc
+
+    \subsection{RISC: load-linked/store-condition (LL/SC) Loop}
+    used in a pair some memory address
+    
+    for efficient implementation:
+    \begin{itemize}
+      \item false negative cna happen during store-conditional (stxr instruction): a chunk of memory tracked usually 74 bytes / 1 kB
+      \item 1 memory address pre core can be tracked at a timeclrex (stop tracking writes to memory) $\implies$ subsequent SC will fail
+    \end{itemize}
+
+    ARM64 LL/SC pair:
+    \begin{itemize}
+    \item ldxr
+    \item stxr
+    \end{itemize}
+
+    ARMv8.1 atomic instructions:
+    \begin{itemize}
+    \item cas (equivalent to compare-exchange)
+    \item fetch-* instructions
+    \end{itemize}
+
+    \subsection{Cache Coherence Protocol for Consistency Between Processor Caches}
+    eg: EMSI, MOESI, MESIF
+
+    keep states for individual cache levels
+
+    use \verb%std::hint::black_box(..)% to disable compiler optimization when doing performance measurement
+
+    measurable difference when writes to cache require exclusive access at the same time when other cores are tring to load on the same cache lines
+
+    add padding to separate variables in cache lines (to reduce false sharing)\\
+    eg: \verb%#[repr(align(64))]% for 64 byte alignment (note: must be power of 2, cannot be mixed with packed repr)
+
+    pack variable close together if they are expected to be accessed close temporally
+
+    out of order instructions/effects:
+    \begin{itemize}
+    \item store buffers for writing back to cache: brief moment of inconsistency present when write ops are not yet visible to other cores
+    \item invalidation queues: invalidation requests (dropping cache line) queued for later processing\\
+      $\implies$ inconsistency (outdated before they are dropped)\\
+      $\implies$ visibility of write ops from other cores slightly delayed
+    \item pipelining: parallel instructions: computation on some memory finishes before preceding instructions $\implies$ interaction with other cores (may appeat out of order)
+    \item special instructions exist to prevent these above
+    \end{itemize}
+
+    \subsection{Memory Ordering}
+    x86-64 and ARM64 are other-multi-copy atomic architectures\\
+    $\implies$ write op visible to any core $\implies$ visible to all cores at same time\\
+    $\implies$ memory ordering is same as instruction reordering
+
+    x864-64 has fairly strong ordering restructions:\\
+    $\implies$ release and acquire semantics have same cost as relaxed memory ordering\\
+    $\implies$ (acquire $\iff$ relaxed, release $\iff$ relaxed)\\
+    $\impies$ store doesn't get reordered earlier than a preceding memory operation
+    $\implies$ load doesn't get reordered later than a following memory operation
+
+    ARM64 has relatively weak ordering: all memory ops can be reordered\\
+    acquire and release versions of loads and stores:
+    \begin{itemize}
+    \item stlr
+    \item ldar
+    \item ldaxr
+    \item stlxr
+    \end{itemize}
+
+    none of the sepcial acquire and release instructions is reordered with any other of these special instructions
+    $\iff$ acquire-release operations are same as sequentially consistent operations (acquire / release / AcqRel has same cost as SeqCst)
+
+    \subsection{Memory Fence / Barrier Instructions}
+
+    prevents certain instructions being reordered past it
+
+    fences pose stronger constraint than release-acquire operations directly on atomic variables $\implies$ release-acquire atomic ops can be logically replaced with fences but the reverse is not true
+
+    fences are not acquire or load operations
+
+    Release Fence:
+    \begin{itemize}
+    \item usually used with atomic store after the release fence
+    \item 1 way fence: memory operations before release fence cannot be reordered down past ALL subsequent memory writes after the fence (contrast with release store on atomic variable: memory operations before release op cannot be reordered down past the release op itself)
+    \end{itemize}
+
+    Acquire Fence: 
+    \begin{itemize}
+    \item usually used with atomic load before the acquire fence
+    \item 1 way fence: memory operations after acquire fence cannot be reordered up before ALL previous memory reads before the fence
+    \item happens-before relation is established when a release store on an atomic variable and the load of the atomic variable reads any expected value that is caused by side-effects of the release sequence
+    \end{itemize}
+
+    SeqCst Fence:
+    \begin{itemize}
+      \item both an release and an acquire fence
+    \end{itemize}  
+
+    on X64-64:
+    \begin{itemize}
+    \item Acquire and Release are same as relaxed memory ordering (acquire/release fences are elided)
+    \item SeqCst: issue of mfence instruction
+    \end{itemize}
+  
+    on ARM64:
+    \begin{itemize}
+    \item Acquire: dmb ishld
+    \item Release: dmb ish
+    \item AcqRel: dmb ish
+    \item SeqCst: dmb ish (same cost as acquire and release)
+    \end{itemize}
+
     \vfill\null
     \columnbreak
         

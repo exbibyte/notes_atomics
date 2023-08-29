@@ -629,6 +629,93 @@ if p == ... {
         
     \section{OS Primitives}
 
+    futex used as a basic primitive that is optimized to avoid frequent syscall
+
+    originally syscall in linux but available in supporting libraries on other OSes (can use syscall from libc crate)
+
+    use of an atomic variable for thread notifications and wakeups
+
+    fast path in userspace when non-blocking, resort to slower syscall when blocking in required
+
+    spurious thread wakeups possible, thus need a condition check
+
+    solution to missing wakeup:
+    \begin{itemize}
+    \item use of another value:\\
+      expected value match atomic variable $\implies$ blocking wait\\
+      otherwise $\implies$ non-blocking
+    \item wake is atomic with respect to wait:\\
+      change atomic variable's value before wake\\
+      $\implies$ thread that is about to wait will actually not block and skip wait therefore the wake up no longer has any effect
+    \item check of expected value and wait/block (of \verb%futex_wait%) happens as a single atomic operation wrt. other futex operations
+    \end{itemize}
+
+    priority inversion problem:
+    \begin{itemize}
+    \item high priority thread blocked by another lower priority thread with lock held
+    \item solution: allow priority inheritance temporarily when this situation occurs
+    \item see \verb%FUTEX_<OP>_PI% operations
+    \end{itemize}
+        
+    \subsection{Implementation Variants on Other OS}
+    Windows:
+    \begin{itemize}
+    \item heavy weight objects
+    \item \verb%critical_section%
+    \item slim reader-writer lock
+    \item address based waiting (\verb%Wait/WakeByAddress%)
+    \end{itemize}
+
+    MacOS:
+    \begin{itemize}
+    \item \verb%libc, libc++, obj-c, swift% interface: pthread impl
+    \item platform specific lightweight \verb%os_unfair_lock%, limitations: no cond var, no reader-writer variant
+    \end{itemize}
+
+    \subsection{Standards for Accessing Kernel Scheduler via Special Libs or Syscalls}
+    POSIX for Unix based systems
+
+    pthreads extensions: provide support for threading, data types, functions for concurrency
+
+    \subsubsection{Concerns wrt. Movable/Non-Movable Types}
+    pthread structures are generally non-movable types due to self references\\
+    possible workarounds:\\
+    \verb%std::pin%\\
+    \verb%Box<..>%: issue with leaking/forgetting an object: \verb%pthread_mutex_destroy% on locked mutex may result in undefined behaviour as per spec.\\
+    
+    \subsection{Futex as an Efficient Mutex}
+    simple futex-like addition to \verb%C++% standard:\\
+    \verb%std::atomic_wait%\\
+    \verb%std::atomic_notify%
+
+    originally added to Linux systems: \verb%SYS_futex% syscall: use of 32 bit atomic variable address to notify threads when to wake up
+
+    solution for missing wakeup signal: atomic op for wait $\implies$ a wake, between check of expect value provided to wait and the moment it goes to sleep, is not missed
+
+    manage state in userspace if possible, only rely on slower code path (via syscall) when absolutely necessary (need for a block)
+
+    usually wait used in a loop to check condition of possible spurious wakeups
+
+    futex related op arguments:
+    \begin{itemize}
+    \item 32 bit atomic pointer
+    \item op constant
+    \item optional flags, eg: \verb%FUTEX_PRIVATE, FUTEX_CLOCK_REALTIME%
+    \item remaining arguments dependent on the op
+    \end{itemize}
+    
+    futex ops:
+    \begin{itemize}
+    \item \verb%FUTEX_WAIT%: check and block is atomic
+    \item \verb%FUTEX_WAKE%: provide max # of threads to wake up
+    \item \verb%FUTEX_WAIT_BITSET%: wake only for bits set in common from a corresponding \verb%FUTEX_WAKE_BITSET% op
+    \item \verb%FUTEX_WAKE_BITSET%
+    \item \verb%FUTEX_REQUEUE%
+    \item \verb%FUTEX_CMP_REQUEUE%
+    \item \verb%FUTEX_WAKE_OP%      
+    \item \verb%FUTEX_PRIVATE_FLAG%
+    \end{itemize}
+    
     \vfill\null
     \columnbreak
     

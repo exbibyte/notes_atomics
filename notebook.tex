@@ -899,6 +899,94 @@ if p == ... {
     
     \subsection{Locks}
 
+    atomic-wait crate for providing cross platform interface for futex-like syscall:
+    \begin{itemize}
+    \item \verb%wait(& AtomicU32, u32)%
+    \item \verb%wake_one(& AtomicU32)%
+    \item \verb%wake_all(& AtomicU32)%
+    \end{itemize}
+    platform implementation:
+    \begin{itemize}
+    \item Linux: \verb%futex% syscall
+    \item Windows: \verb%WaitOnAddress%
+    \item FreeBSD: \verb%_umtx_op%
+    \item MacOS: \verb%libc++%
+    \end{itemize}
+
+    \subsubsection{Constructing Mutex}
+    use atomic variable for tutex-like syscall (invoke wait for locking):
+\begin{verbatim}
+    struct Mutex<T> {
+      state:: AtomicU32,
+      value: UnsafeCell<T>,
+    }
+
+    struct MutexGuard<'a, T> {
+      mutex: & 'a Mutex<T>,
+    }
+
+    //Produce a guard as proof of exclusive access.
+    //
+    //add Deref and DerefMut traits for data access
+    //like & T, & mut T
+    fn lock(& self) -> MutexGuard<T> {
+      while self.state.swap(1, Acquire) == 1 {
+        wait(&self.state, 1); //wait until state != 1
+      }
+      MutexGuard { mutex: self }
+    }
+\end{verbatim}
+
+    use drop of guard to unlock mutex by invoking wake after setting state to unlocked value:
+\begin{verbatim}
+    imnpl<T> Drop for MutexGuard<'_, T> {
+      fn drop(& mut self){
+        self.mutex.state.store(0, Release);
+        // sufficient for 1 thread to claim lock
+        wake_one(&self.mutex.state);
+      }
+    }
+\end{verbatim}    
+
+    note removal of wait and awake pair (atomic operations) $\implies$
+    \begin{itemize}
+    \item still correct wrt. memory safety
+    \item equivalent to spin lock
+    \item serve as optimization
+    \end{itemize}
+
+    helper crate (\verb%lock_api%) to generate API/boilerplate for Mutex related things where user provides:
+    \begin{itemize}
+    \item type representing lock state
+    \item unlock and lock functions in \verb%lock_api::RawMutex% trait
+    \end{itemize}
+
+    futher optimizations to avoid syscall:
+    \begin{itemize}
+    \item avoid unconditional awake when dropping MutexGuard: use extra info to track if there are no other threads waiting:
+      \begin{itemize}
+        \item split state into more values:
+          \begin{itemize}
+          \item 0: unlocked
+          \item 1: locked, no threads waiting
+          \item 2: locked, $\geq$ 1 threads waiting
+          \end{itemize}
+        \item uncontended case: \verb%wait% and \verb%wake_one% are both avoided
+        \item contended case: thread that waits will need to eventually do \verb%wake_one%
+      \end{itemize}
+    \item further optimize by incorporating spin wait for brief duration before resorting a heavy cost wait:
+      \begin{itemize}
+        \item use case when exclusive access is needed only for a very short time
+        \item insert spin loop for a number of iterations for the case when there are no other waiters (state value of 1)
+      \end{itemize}
+    \end{itemize}
+ 
+    \subsubsection{Constructing Condition Variable}
+    todo
+
+    \subsubsection{Constructing Reader-Writer Lock}
+    todo
+    
     \vfill\null
     \columnbreak
     

@@ -7,6 +7,7 @@
 \usepackage{amsmath}
 \usepackage{mathtools}
 \usepackage{amssymb}
+\usepackage{bbm}
 \usepackage{tikz}
 \usepackage[ruled,vlined,linesnumbered,lined,boxed,commentsnumbered]{algorithm2e}
 \usepackage{siunitx}
@@ -569,7 +570,7 @@ if p == ... {
     x864-64 has fairly strong ordering restructions:\\
     $\implies$ release and acquire semantics have same cost as relaxed memory ordering\\
     $\implies$ (acquire $\iff$ relaxed, release $\iff$ relaxed)\\
-    $\impies$ store doesn't get reordered earlier than a preceding memory operation
+    $\implies$ store doesn't get reordered earlier than a preceding memory operation
     $\implies$ load doesn't get reordered later than a following memory operation
 
     ARM64 has relatively weak ordering: all memory ops can be reordered\\
@@ -707,7 +708,7 @@ if p == ... {
     futex ops:
     \begin{itemize}
     \item \verb%FUTEX_WAIT%: check and block is atomic
-    \item \verb%FUTEX_WAKE%: provide max # of threads to wake up
+    \item \verb%FUTEX_WAKE%: provide max number of threads to wake up
     \item \verb%FUTEX_WAIT_BITSET%: wake only for bits set in common from a corresponding \verb%FUTEX_WAKE_BITSET% op
     \item \verb%FUTEX_WAKE_BITSET%
     \item \verb%FUTEX_REQUEUE%
@@ -982,11 +983,106 @@ if p == ... {
     \end{itemize}
  
     \subsubsection{Constructing Condition Variable}
-    todo
-
-    \subsubsection{Constructing Reader-Writer Lock}
-    todo
+    for use with a lock (eg: mutex)
     
+    unlocks mutex on \verb%wait()%
+
+    locks on a notify signal from another thread
+
+    checks on some supplied condition to enable further access to critital section for associated thread
+
+    thread may be spuriously woken up which is kept in check by the supplied condition, however this lcoks and unlocks mutex so it takes up compute cycles
+
+    mechanism to prevent lost signal is different to futex:
+    \begin{itemize}
+    \item cond var starts to listen to signal before unlocking mutex
+    \item futex uses a check of state of atomic variable to make sure waiting is a good idea
+    \end{itemize}
+
+    possible implementation of cond var using futex:
+    \begin{itemize}
+    \item let every notification change an atomic variable
+    \item \verb%wait()% load the atomic variable before unlocking and call futex wait with the said atomic variable (and let futex wait return before return on a received notify signal)\\
+      $\implies$ cond var's most simplistic impl. only needs 1 atomic variable and futex calls, \verb%wait% and \verb%wake/notify%
+    \item spurious wakeups on waiting thread: wrap an outer loop around \verb%wait()% call in order to check for user supplied condition
+    \end{itemize}
+
+    \begin{verbatim}
+    fn wake(){
+      atomic_var++;
+      futex::wake(atomic_var);
+    }
+
+    fn wait(guard: MutexGuard) -> MutexGuard {
+      //already locked
+      let counter = atomic_var.load(Relaxed);
+      let mtx = guard.mutex;
+
+      //explicit drop does a release store on some
+      //atomic variable associated with the mutex
+      //
+      //this happens-before another thread locking
+      //mutex (acquire load on some atomic variable
+      //associated with the mutex) and signaling,
+      //therefore relaxed load of atomic variable
+      //by wait() is enough
+      guard.drop();
+
+      //unlocked now
+
+      futex::wait(atomic_var, counter);
+
+      mtx.lock() //lock again
+    }
+    \end{verbatim}
+
+    futex wake-wait pair is atomic $\iff$
+    either waiting thread goes to sleep and get woken up later or the thread does not go to sleep and continues on
+    
+    optimization:
+    \begin{itemize}
+    \item for the case of wait: not much optimization since thread has decided to call wait anyway after checking supplied  condition
+    \item for the case of wake: avoid call if no waiting threads present:\\
+      introduce variable to track number of waiters (increment when prior to waiting, decrement when done waiting), notify threads can skip if count is 0
+    \item optimization to reduce spurious wakeups: multi-group of waiters and swapping
+    \item optimization to reduce notify-all's thundering herd problem: use futex requeue
+    \end{itemize}
+    
+    \subsubsection{Constructing Reader-Writer Lock}
+    \verb%T: Send + Sync% $\implies$ \verb%RWLock<T>: Send + Sync%
+
+    \verb%T% requires \verb%Send% just like the case for \verb%Mutex<T>%
+    
+    \verb%T% additionally requires \verb%Sync% because it may be shared between threads for multiple readers
+
+    idea: counter for shared readers, cell for interior mutability
+
+    2 lock types to access data:
+    \begin{itemize}
+    \item \verb%ReadGuard%: allows $\geq1$ readers at the same time
+    \item \verb%WriteGuard%: behaves similar to \verb%Mutex% (exclusive access from 1 thread at a time
+    \end{itemize}
+
+    optimizations:
+    \begin{itemize}
+    \item introduce another counter variable for waiting writers in order to reduce  writer spin looping and waking up excessively due to presence of readers
+    \item writer starvation problem: add additional states to account for cases of waiting writer:\\
+      when writer lock not acquired $\implies$ 2 * (\# of readers) + $\mathbbm{1}$(any waiting writer present)\\
+      when writer lock acquired $\implies$ \verb%U32::Max%\\
+
+      (writer present $\iff$ odd number) $\implies$ readers need to be blocked
+      
+    \end{itemize}
+
+    \subsubsection{summary}
+    \begin{itemize}
+    \item \verb%atomic-wait% crate for futex-like interface on major OSes
+    \item efficient mutex implementation tracks info on waiting threads to avoid extra syscalls
+    \item cond var may track number of waiting threads to avoid extra wake operations
+    \item additional variables are used in lock to wake writers independently from readers
+    \item extra state may be used to prioritize waiting writer over waiting readers
+    \end{itemize}
+
     \vfill\null
     \columnbreak
     

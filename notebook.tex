@@ -84,14 +84,14 @@
   \item Rust Atomics and Locks by Mara Bos \cite{rustatomicsbook}
   \end{itemize}
   
-  \section{Basic Concurrency Primitives}
+  \section{Basic Concurrency Primitives Overview}
   topics: interior mutability, threadsafety, runtime borrow check
 
-  \subsection{single thread interior mutability}
+  \subsection{Single Thread Interior Mutability}
   RefCell: borrow at runtime\\
   Cell: value replacement, not borrow; limited to word size
   
-  \subsection{threadsafe interior mutability}
+  \subsection{Threadsafe Interior Mutability}
   Mutex: exclusive borrow at runtime\\
   RwLock: differentiates borrow type: exclusive vs. shared read only\\
   Atomics: value replacement, not borrow; limited to word size\\
@@ -174,9 +174,7 @@ if let ... = ... {
 
   writer starvation issue to cosider for fairness of access
 
-  \subsection{Thread Signaling}
-
-  \subsection{park/unpark}
+  \subsection{Park/Unpark}
   park: current thread put itself to sleep\\
   unpark: another thread wakes sleeping thread; needs handle of the sleep read from spawn() method or thread::current()
 

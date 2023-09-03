@@ -78,8 +78,13 @@
 % \end{align}
   
 \begin{multicols*}{2}
-    
-  \section{Basic Concurrency Primitives, Ch1}
+
+  Gathered notes from:
+  \begin{itemize}
+  \item Rust Atomics and Locks by Mara Bos \cite{rustatomicsbook}
+  \end{itemize}
+  
+  \section{Basic Concurrency Primitives}
   topics: interior mutability, threadsafety, runtime borrow check
 
   \subsection{single thread interior mutability}
@@ -102,12 +107,12 @@
   \begin{itemize}
   \item automatically opt-in
   \item manually opt-out
-  \item recursively deduced on filds of structs
+  \item recursively deduced on fields of structs
   \end{itemize}
 
-  un-implemented types:
+  un-implemented trait (\verb%!Trait%) in some types:
   \begin{verbatim}
-  Cell<T>: Send + Sync!
+  Cell<T>: Send + !Sync where T: Send
   * const T / * mut T: !Send + !Sync
   Rc<T>: !Send + !Sync
   std::marker::PhantomdData<T> where T: !Send / !Sync
@@ -1087,7 +1092,11 @@ if p == ... {
     \columnbreak
     
     \section{Additional Ideas}
+    todo
+
+    \bibliographystyle{plain}
+    \bibliography{notebook}
     
-\end{multicols*}
+  \end{multicols*}
 
 \end {document}

@@ -172,11 +172,11 @@ if let ... = ... {
   read() $\implies$ ReLockReadGuard: Deref\\
   write() $\implies$ ReLockWriteGuard: DerefMut
 
-  writer starvation issue to cosider for fairness of access
+  writer starvation issue to consider for fairness of access
 
   \subsection{Park/Unpark}
   park: current thread put itself to sleep\\
-  unpark: another thread wakes sleeping thread; needs handle of the sleep read from spawn() method or thread::current()
+  unpark: another thread wakes sleeping thread; needs handle of the sleep thread read from \verb%spawn()% method or \verb%thread::current()%
 
   spurious wakeup due to false sharing, etc. $\implies$ user provide a check upon wakeup
 
@@ -187,23 +187,27 @@ if let ... = ... {
     
   \subsection{Condition Variable}
 
-  signaling events related ro protected data of mutex
+  signaling events related to protected data of mutex
 
-  methods: wait, notify
+  methods: \verb%wait%, \verb%notify_*%
 
   atomically unlock mutex and start waiting (to avoid lost notification)
 
   \subsubsection{Communication}
-  waiting thread:\\
-  takes MutexGuard as input
-  unlocks mutex
-  thread put to sleep
-  thread wakes (via a notify of CondVar or spurious wakeup)
-  relocks mutex and returns MutexGuard
-
-  notifying thread:\\
-  invoke notify on CondVar
-
+  waiting thread:
+  \begin{enumerate}
+  \item takes MutexGuard as input
+  \item unlocks mutex
+  \item thread put to sleep
+  \item thread wakes (via a notify of CondVar by another thread or spurious wakeup)
+  \item relocks mutex and returns MutexGuard
+  \end{enumerate}
+    
+  notifying thread:
+  \begin{enumerate}
+  \item invoke notify on CondVar
+  \end{enumerate}
+  
   \subsubsection{Spurious Wakeup}
   need additional memory to check actual event: can add this along with the original value wrapped by mutex\\
   use a loop with wait to put thread back to sleep if condition not met
@@ -278,69 +282,80 @@ if let ... = ... {
 
   \section{Atomics}
 
-  \verb%fetch_and_modify%\\
-  \verb%swap%\\
-  \verb%compare_exchange%:
+  operations:
   \begin{itemize}
-    \item ABA problem for pointer algorithms
-    \item weak version exists for more efficient impl. on some hardware at expense of spurious wakeup
-    \end{itemize}
-  \verb%fetch_update% $\iff$ load followed by loop with \verb%compare_exchange_weak% and user provided computation
+    \item \verb%fetch_and_modify%
+    \item \verb%swap%
+    \item \verb%compare_exchange%:
+      \begin{itemize}
+      \item ABA problem for pointer algorithms
+      \item weak version exists for more efficient impl. on some hardware at expense of spurious wakeup
+      \end{itemize}
+    \item \verb%fetch_update% $\iff$ load followed by loop with \verb%compare_exchange_weak% and user provided computation
+  \end{itemize}
   
   \subsection{Scoped Thread}
 
   regular \verb%std::thread::spawn% requires closure to be Send $\implies$ all captures of closure are required to be Send
   
-  \verb%std::thread::scope%:\\
-  borrows object of non-static lifetime that can outlive thread\\
-  muatiblity rules apply\\
-  threads are automatically joined at the end of the scope
-
+  \verb%std::thread::scope%:
+  \begin{itemize}
+  \item borrows object of non-static lifetime that can outlive thread
+  \item mutability rules apply
+  \item threads are automatically joined at the end of the scope
+  \end{itemize}
+  
   \subsection{Lazy Initialization}
-  execute once by 1 thread, sharable afterwards\\
-  race possible from threads, but this is different from data race which causes undefined behaviour (UB)\\
-  can use \verb%CondVar% / thread parking / \verb%std::sync::Once% / \verb%std::sync::OnceLock% to avoid wasted compute from multiple threads
-
+  \begin{itemize}
+  \item execute once by 1 thread, sharable afterwards
+  \item race possible from threads, but this is different from data race which causes undefined behaviour (UB)
+  \item can use \verb%CondVar% / thread parking / \verb%std::sync::Once% / \verb%std::sync::OnceLock% to avoid wasted compute from multiple threads
+  \end{itemize}
+  
   \subsection{Move Closure}
-  transfer ownership of value\\
-  capture variable via copying/moving instead of borrowing\\
-  copying reference in a move closure in order to borrow from variable\\
-  note: Atomic does not implement Copy trait
-
+  \begin{itemize}
+  \item transfer ownership of value
+  \item capture variable via copying/moving instead of borrowing
+  \item copying reference in a move closure in order to borrow from variable
+  \item note: Atomic does not implement Copy trait
+  \end{itemize}
+  
   \subsection{Data Sharing Between Threads in General}
-  data shared need to outlive all involved threads:\\
+  data shared need to outlive all involved threads:
   \begin{itemize}
     \item make data owned by entire program via static lifetime (static item exists even before start of the main program
     \item leak an allocation and promise never to drop it from that point onward in the duration of the entire program:
       eg: \verb%Box::leak(Box::new(..))%\\
       note: \verb%'static% means the object will exist until the end of the program but may not exist at the start of the program\\
-      note: Copy $implies$ when moved, the original value still exists
-    \item reference counting: track ownership and drop when no owners\\
+      note: Copy $\implies$ when moved, the original value still exists
+    \item reference counting: track ownership and invoke \verb%drop% when no owners left\\
       eg: \verb%std::rc::Rc%: clone increments counter only and gives reference to allocation\\
-      eg: \verb%std::sync::Arc%: version of $Rc$ that is safe between threads\\
+      eg: \verb%std::sync::Arc%: version of \verb%Rc% that is threadsafe\\
     \end{itemize}
 
-    use of scope and variable shadowing to reuse identifiers when cloning:\\
-    shadowing: original name is not obtainable anymore in current scope\\
-    original name still obtainable in an outerscope, can clone it in another inner scope
-
+    use of scope and variable shadowing to reuse identifiers when cloning:
+    \begin{itemize}
+    \item shadowing: original name is not obtainable anymore in current scope
+    \item original name still obtainable in an outerscope, can clone it in another inner scope
+    \end{itemize}
+    
     reference counted pointers(\verb%Rc% and \verb%Arc%) have same restrictions as immutable reference (\verb%&T%)
 
     mutable borrows are guaranteed at compile time $\implies$ mutable aliasing between 2 variables does not occur; optimization to remove impossible code blocks possible
 
     assumptions held by the compiler:
     \begin{itemize}
-      \item  an immutable reference exists $implies$ no other mutable references to the associated data exists
+      \item  an immutable reference exists $\implies$ no other mutable references to the associated data exist
       \item there is at maximum 1 mutable reference to an object at anytime
     \end{itemize}
-      
+
     if such assumptions are broken, then UB exists: more wrong conclusions may be propagated through optimizations
 
     \verb%unsafe% blocks are also assumed to be sound by the compiler which means compiler may apply optimizations and elide code when feasible
 
     \subsection{Interior Mutability}
 
-    shared reference \verb%&T%: copied and sharable (not mutable)\\
+    shared reference \verb%& T%: copied and sharable (not mutable)\\
     exclusive reference \verb%& mut T%: exclusive borrow of T
 
     interior mutability provides more flexibility for shared data that needs mutation
@@ -480,7 +495,7 @@ if p == ... {
     $\implies$ usually overly tall claim\\
     $\implies$ more relaxed constraints may be easier to review (eg: release-acquire pairs)
 
-    release store not form happens-before relation with SeqCst store: for a part of a globally consistent order, both operations need to be SeqCst
+    release store not form happens-before relation with SeqCst store; for a part of a globally consistent order, both operations need to be SeqCst
 
     \subsection{Summary}
 

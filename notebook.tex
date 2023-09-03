@@ -536,12 +536,13 @@ if p == ... {
     add, sub, and, not, or, xor, xchg(implicit), xadd, bts, btr, btc
 
     \subsection{RISC: load-linked/store-condition (LL/SC) Loop}
-    used in a pair some memory address
+    used in a pair on some memory address
     
     for efficient implementation:
     \begin{itemize}
-      \item false negative cna happen during store-conditional (stxr instruction): a chunk of memory tracked usually 74 bytes / 1 kB
-      \item 1 memory address pre core can be tracked at a timeclrex (stop tracking writes to memory) $\implies$ subsequent SC will fail
+      \item false negative can happen during store-conditional (stxr instruction): a chunk of memory tracked usually 64 bytes / 1 kB
+      \item 1 memory address pre core can be tracked at a time
+      \item clrex (stop tracking writes to memory) $\implies$ subsequent SC will fail
     \end{itemize}
 
     ARM64 LL/SC pair:
@@ -576,7 +577,7 @@ if p == ... {
     \item invalidation queues: invalidation requests (dropping cache line) queued for later processing\\
       $\implies$ inconsistency (outdated before they are dropped)\\
       $\implies$ visibility of write ops from other cores slightly delayed
-    \item pipelining: parallel instructions: computation on some memory finishes before preceding instructions $\implies$ interaction with other cores (may appeat out of order)
+    \item pipelining: parallel instructions: computation on some memory finishes before preceding instructions $\implies$ interaction with other cores (may appear out of order)
     \item special instructions exist to prevent these above
     \end{itemize}
 
@@ -585,25 +586,28 @@ if p == ... {
     $\implies$ write op visible to any core $\implies$ visible to all cores at same time\\
     $\implies$ memory ordering is same as instruction reordering
 
-    x864-64 has fairly strong ordering restructions:\\
-    $\implies$ release and acquire semantics have same cost as relaxed memory ordering\\
-    $\implies$ (acquire $\iff$ relaxed, release $\iff$ relaxed)\\
-    $\implies$ store doesn't get reordered earlier than a preceding memory operation
-    $\implies$ load doesn't get reordered later than a following memory operation
-
-    ARM64 has relatively weak ordering: all memory ops can be reordered\\
-    acquire and release versions of loads and stores:
+    x864-64 has fairly strong ordering restructions:
+    \begin{itemize}
+    \item release and acquire semantics have same cost as relaxed memory ordering
+    \item store doesn't get reordered earlier than a preceding memory operation
+    \item load doesn't get reordered later than a following memory operation
+    \item $\implies$ (acquire $\iff$ relaxed, release $\iff$ relaxed)
+    \end{itemize}
+    
+    ARM64 has relatively weak ordering: all memory ops can be reordered
+    \begin{itemize}
+    \item acquire and release versions of loads and stores:
     \begin{itemize}
     \item stlr
     \item ldar
     \item ldaxr
     \item stlxr
     \end{itemize}
-
-    none of the sepcial acquire and release instructions is reordered with any other of these special instructions
+    \item none of the special acquire and release instructions is reordered with any other of these special instructions
     $\iff$ acquire-release operations are same as sequentially consistent operations (acquire / release / AcqRel has same cost as SeqCst)
+    \end{itemize}
 
-    \subsection{Memory Fence / Barrier Instructions}
+  \subsection{Memory Fence / Barrier Instructions}
 
     prevents certain instructions being reordered past it
 
@@ -621,7 +625,7 @@ if p == ... {
     \begin{itemize}
     \item usually used with atomic load before the acquire fence
     \item 1 way fence: memory operations after acquire fence cannot be reordered up before ALL previous memory reads before the fence
-    \item happens-before relation is established when a release store on an atomic variable and the load of the atomic variable reads any expected value that is caused by side-effects of the release sequence
+    \item happens-before relation is established when load of the atomic variable reads any expected value that is caused by side-effects of the release sequence (eg: a release store on an atomic variable, or release fence followed by relaxed atomic store)
     \end{itemize}
 
     SeqCst Fence:

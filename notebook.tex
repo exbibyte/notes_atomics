@@ -533,28 +533,37 @@ if p == ... {
     compare-exchange and compare-exchange-weak have no difference: compile to lock cmpxchg instruction
 
     x86 lock prefix as a modifier for instructions:\\
-    add, sub, and, not, or, xor, xchg(implicit), xadd, bts, btr, btc
+    \verb%add, sub, and, not, or, xor, xchg(implicit),%\\
+    \verb%xadd, bts, btr, btc%
 
-    \subsection{RISC: load-linked/store-condition (LL/SC) Loop}
-    used in a pair on some memory address
+    \subsection{RISC}
+
+    \subsubsection{Load-Linked/Store-Condition (LL/SC)}
+    used in a pair on a memory address
+
+    LL: returns current value of a memory address, processor remembers the address internally
+    
+    SC: conditionally store new value to that memory address after previous LL if no updates occured since the LL
+
+    \subsubsection{ARM64 LL/SC Pair}
+    \begin{itemize}
+    \item \verb%ldxr% (load exclusive register)
+    \item \verb%stxr% (store exclusive register)
+    \item \verb%clrex% (clear exclusive): stop tracking writes to memory $\implies$ subsequent store conditional will fail
+    \end{itemize}
+
+    typically used in a loop with a branching compare to retry in order to ensure LL/SC succeeds
     
     for efficient implementation:
     \begin{itemize}
-      \item false negative can happen during store-conditional (stxr instruction): a chunk of memory tracked usually 64 bytes / 1 kB
+      \item false negative can happen during store-conditional (eg: \verb%stxr%): a chunk of memory tracked usually 64 bytes / 1 kB
       \item 1 memory address pre core can be tracked at a time
-      \item clrex (stop tracking writes to memory) $\implies$ subsequent SC will fail
     \end{itemize}
 
-    ARM64 LL/SC pair:
+    \subsubsection{ARMv8.1 Atomic Instructions}
     \begin{itemize}
-    \item ldxr
-    \item stxr
-    \end{itemize}
-
-    ARMv8.1 atomic instructions:
-    \begin{itemize}
-    \item cas (equivalent to compare-exchange)
-    \item fetch-* instructions
+    \item \verb%cas% (equivalent to compare-exchange)
+    \item \verb%fetch-*% instructions
     \end{itemize}
 
     \subsection{Cache Coherence Protocol for Consistency Between Processor Caches}
@@ -597,14 +606,14 @@ if p == ... {
     ARM64 has relatively weak ordering: all memory ops can be reordered
     \begin{itemize}
     \item acquire and release versions of loads and stores:
-    \begin{itemize}
-    \item stlr
-    \item ldar
-    \item ldaxr
-    \item stlxr
-    \end{itemize}
+      \begin{itemize}
+      \item \verb%stlr% (store-release register)
+      \item \verb%ldar% (load-acquire register)
+      \item \verb%stlxr%(store-release exclusive register)
+      \item \verb%ldaxr% (load-acquire exclusive register) 
+      \end{itemize}
     \item none of the special acquire and release instructions is reordered with any other of these special instructions
-    $\iff$ acquire-release operations are same as sequentially consistent operations (acquire / release / AcqRel has same cost as SeqCst)
+    $\iff$ acquire-release operations are same as sequentially consistent operations (Acquire / Release / AcqRel has same cost as SeqCst)
     \end{itemize}
 
   \subsection{Memory Fence / Barrier Instructions}
@@ -641,10 +650,10 @@ if p == ... {
   
     on ARM64:
     \begin{itemize}
-    \item Acquire: dmb ishld
-    \item Release: dmb ish
-    \item AcqRel: dmb ish
-    \item SeqCst: dmb ish (same cost as acquire and release)
+    \item Acquire: \verb%dmb ishld%
+    \item Release: \verb%dmb ish%
+    \item AcqRel: \verb%dmb ish%
+    \item SeqCst: \verb%dmb ish% (same cost as acquire and release)
     \end{itemize}
 
     \vfill\null
@@ -801,7 +810,7 @@ if p == ... {
           \item \verb%Channel% resets its contents on entry to \verb%split% method in case it is used multiple times
           \end{itemize}
           
-      \item overwriting content for fresh initialization: after 1st borrow expires, subseqquent borrows are made on these newly created resources
+      \item overwriting content for fresh initialization: after 1st borrow expires, subsequent borrows are made on these newly created resources
       \item blocking interface:
         \begin{itemize}
         \item make \verb%RX% object not \verb%Send%, such as using a \verb%PhantomData<* const ()>% member field so that auto trait deduction for the wrapping struct is propagated to be \verb%!Send%:\\
@@ -830,16 +839,44 @@ if p == ... {
     
     auto traits is not active for raw pointer types (including \verb%NonNull%) wrt. \verb%Send% and \verb%Sync%
 
-    when only find decrement needs to be acquire and all others release:
+    cloning corresponds to incrementing counter and giving a shared reference to underlying data:
 \begin{verbatim}
+  impl<T> Clone for Arc<T> {
+    fn clone(&self) -> Self {
+      self.data().ref_count.fetch_add(1, Relaxed);
+      Arc {
+        ptr: self.ptr,
+      }
+    }
+  }
+\end{verbatim}
+    
+    only final decrement needs to be acquire and release, while all others can be only release:
+\begin{verbatim}
+  impl<T> Drop for Arc<T> {
+    fn drop(&mut self) {
     if var.fetchsub(1, release) == 1 {
       fence(acquire);
+      //drop logic
+      unsafe {
+        drop(Box::from_raw(self.ptr.as_ptr()));
+      }
     }
+  }
 \end{verbatim}
 
     exclusive access to shared data, conditionally in a runtime branch, eg:
 \begin{verbatim}
-    fn get-Mut(arc: & mut Self) -> Option<& mut T>
+   pub fn get_mut(arc: &mut Self) ->
+    Option<&mut T> {
+    if arc.data().ref_count.load(Relaxed) == 1 {
+        fence(Acquire); //contional acquire
+        //gained exclusive access now
+        unsafe { Some(&mut arc.ptr.as_mut().data) }
+    } else {
+        None
+    }
+  }
 \end{verbatim}
     
     miri interpreter for simulation and verification of unsafe code

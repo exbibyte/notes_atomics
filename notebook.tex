@@ -667,7 +667,7 @@ if p == ... {
 
     use of an atomic variable for thread notifications and wakeups
 
-    fast path in userspace when non-blocking, resort to slower syscall when blocking in required
+    fast path in userspace when non-blocking, resort to slower syscall when blocking is required
 
     spurious thread wakeups possible, thus need a condition check
 
@@ -765,7 +765,7 @@ if p == ... {
     \item requires \verb%T: Send%
     \item locking provides exclusive access (and provides \verb%Sync% trait)
     \item uses \verb%unsafe% blocks in function, user will not have to use \verb%unsafe%
-    \item use lock guard (representing safe access to locked data) pattern to managae lifetime of locked access to protected data:
+    \item use lock guard (representing safe access to locked data) pattern to manage lifetime of locked access to protected data:
     \begin{itemize}
       \item implement \verb%Deref%, \verb%DerefMut% to access data for user ergonomics (behave similar to reference)
       \item implement \verb%Drop%: automatic release store (unlocking) when lifetime of the guard ends
@@ -777,7 +777,7 @@ if p == ... {
 
     \subsubsection{One Shot Channel}
     \begin{itemize}
-      \item 1 message only from 1 thread to another thread
+      \item 1 message only from one thread to another thread
       \item \verb%T: Send%
       \item use of \verb%unsafe%:
         \begin{itemize}
@@ -791,9 +791,9 @@ if p == ... {
       \item use of atomic swaps for setting one time flags
       \item encoding of multiple states in one word and atomic compare-exchanges
       \item possible use of runtime check/panic instead of letting UB happen
-      \item use type checking from compiler to avoid errors: move/consume to avoid unwanted reuse of resources:\\
-        
-        use of non-Copy type and pass by value / consume by called function $\implies$ prevent caller from using that object again at compile time (elides some runtime checks)
+      \item use type checking from compiler to avoid errors: move/consume to avoid unwanted reuse of resources:
+
+        use of non-Copy type and pass by value / consume by called function $\implies$ prevent caller from using that object again at compile time (also elides some runtime checks)
         \begin{itemize}
           \item \verb%TX-RX% pair for message passing, \verb%Channel% shared inside their private implmentations
           \item use of \verb%Arc<T>% for sharing of allocation and resource dropping: \verb%RX% drop and \verb%TX% drop $\implies$ \verb%Arc<T>% drop $\implies$ \verb%T% drop
@@ -810,7 +810,7 @@ if p == ... {
           \item \verb%Channel% resets its contents on entry to \verb%split% method in case it is used multiple times
           \end{itemize}
           
-      \item overwriting content for fresh initialization: after 1st borrow expires, subsequent borrows are made on these newly created resources
+      \item overwriting content for fresh initialization (when calling \verb%split%): after 1st borrow expires, subsequent borrows are made on these newly created resources
       \item blocking interface:
         \begin{itemize}
         \item make \verb%RX% object not \verb%Send%, such as using a \verb%PhantomData<* const ()>% member field so that auto trait deduction for the wrapping struct is propagated to be \verb%!Send%:\\
@@ -831,11 +831,11 @@ if p == ... {
 
     basic implementation: use a pointer type to the shared underlying data via \verb%std::ptr::NonNull%, use counter info for the shared data; use \verb%NonNull::from(Box::leak(Box::new(..)))% to get a pointer from initial allocation
 
-    implement ergonomic methods \verb%deref% and \verb%deref_mut%
+    implement ergonomic methods \verb%deref% and \verb%deref_mut% from traits: \verb%Deref%, \verb%DerefMut%
 
     let \verb%cloning% change internal counter and point to the shared data
     
-    require \verb%T: Send + Sync% and give wrapping \verb%Arc<T>% \verb%Send + Sync%
+    requires \verb%T: Send + Sync% and gives wrapping \verb%Arc<T>% \verb%Send + Sync%
     
     auto traits is not active for raw pointer types (including \verb%NonNull%) wrt. \verb%Send% and \verb%Sync%
 
@@ -856,7 +856,7 @@ if p == ... {
   impl<T> Drop for Arc<T> {
     fn drop(&mut self) {
     if var.fetchsub(1, release) == 1 {
-      fence(acquire);
+      fence(acquire); //conditional acquire
       //drop logic
       unsafe {
         drop(Box::from_raw(self.ptr.as_ptr()));
@@ -879,7 +879,7 @@ if p == ... {
   }
 \end{verbatim}
     
-    miri interpreter for simulation and verification of unsafe code
+    Miri interpreter for simulation and verification of unsafe code
 
     weak version of \verb%Arc<T>%: \verb%Weak<T>%
     \begin{itemize}
@@ -930,7 +930,7 @@ if p == ... {
       \end{itemize}
     \end{itemize}
 
-    strong pointer access to mutate data: runtime conditional chheck to allow exclusive access to \verb%T%
+    strong pointer access to mutate data: runtime conditional check to allow exclusive access to \verb%T%
     \begin{itemize}
     \item check weak pointer counter is 0, strong pointer count is 1
     \item cast underlyding data and return \verb%& mut T%; safe since \verb%Arc% exists
@@ -1008,7 +1008,7 @@ if p == ... {
     }
 \end{verbatim}    
 
-    note removal of wait and awake pair (atomic operations) $\implies$
+    note: removal of wait and awake pair (atomic operations) $\implies$
     \begin{itemize}
     \item still correct wrt. memory safety
     \item equivalent to spin lock
@@ -1104,7 +1104,7 @@ if p == ... {
     \item for the case of wake: avoid call if no waiting threads present:\\
       introduce variable to track number of waiters (increment when prior to waiting, decrement when done waiting), notify threads can skip if count is 0
     \item optimization to reduce spurious wakeups: multi-group of waiters and swapping
-    \item optimization to reduce notify-all's thundering herd problem: use futex requeue
+    \item optimization to reduce \verb%notify_all%'s thundering herd problem: use futex requeue
     \end{itemize}
     
     \subsubsection{Constructing Reader-Writer Lock}

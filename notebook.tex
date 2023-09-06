@@ -1050,7 +1050,7 @@ if p == ... {
 
     checks on some supplied condition to enable further access to critital section for associated thread
 
-    thread may be spuriously woken up which is kept in check by the supplied condition, however this lcoks and unlocks mutex so it takes up compute cycles
+    thread may be spuriously woken up which is kept in check by the supplied condition, however this locks and unlocks mutex so it takes up compute cycles
 
     mechanism to prevent lost signal is different to futex:
     \begin{itemize}
